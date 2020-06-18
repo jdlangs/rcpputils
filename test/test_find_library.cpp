@@ -19,7 +19,12 @@
 #include "gtest/gtest.h"
 
 #include "rcutils/get_env.h"
+#include "rcutils/filesystem.h"
 #include "rcpputils/find_library.hpp"
+
+#ifdef _WIN32
+#include <windows.h>
+#endif
 
 namespace rcpputils
 {
@@ -28,6 +33,8 @@ namespace
 
 TEST(test_find_library, find_library)
 {
+  rcutils_allocator_t allocator = rcutils_get_default_allocator();
+
   // Get ground-truth values from CTest properties.
   std::string expected_library_path;
   {
@@ -67,6 +74,36 @@ TEST(test_find_library, find_library)
     "this_is_a_junk_libray_name_please_dont_define_this_if_you_do_then_"
     "you_are_really_naughty");
   EXPECT_EQ(bad_path, "");
+
+#ifdef _WIN32
+  // On Windows, test find library in the current directory, to support containerized deployments
+
+  const char* currentDir = rcutils_join_path(test_lib_dir, "test_current_path", allocator);
+  EXPECT_NE(currentDir, nullptr);
+
+  const char* testFile = rcutils_join_path(currentDir, "test_win_current_dir.dll", allocator);
+  EXPECT_NE(testFile, nullptr);
+
+  // move a file into the non-current path
+  EXPECT_NE(rcutils_mkdir(currentDir), false);
+  EXPECT_NE(CopyFile(test_lib_actual.c_str(), currentDir, FALSE), FALSE);
+
+  const std::string test_current_dir_fail = find_library_path("test_win_current_dir");
+  EXPECT_EQ(test_current_dir_fail.empty(), true);  // shouldn't be found until we set the current directory.
+
+  DWORD len = GetCurrentDirectoryA(0, NULL) + 1;  // How much space is needed for current path?
+  char* originalCurrentDir = new char[len];
+  GetCurrentDirectoryA(len, originalCurrentDir);
+
+  SetCurrentDirectory(currentDir);
+
+  const std::string test_current_dir_succeed = find_library_path("test_win_current_dir");
+  EXPECT_EQ(test_current_dir_succeed.empty(), false);
+
+  SetCurrentDirectory(currentDir);
+
+  delete [] originalCurrentDir;
+#endif
 }
 
 }  // namespace

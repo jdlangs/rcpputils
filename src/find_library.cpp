@@ -21,6 +21,7 @@
 #include <fstream>
 #include <sstream>
 #include <string>
+#include <filesystem>
 
 #include "rcutils/filesystem.h"
 #include "rcutils/get_env.h"
@@ -32,6 +33,7 @@ namespace
 {
 
 #ifdef _WIN32
+#include <windows.h>
 static constexpr char kPathVar[] = "PATH";
 static constexpr char kPathSeparator = ';';
 static constexpr char kSolibPrefix[] = "";
@@ -75,6 +77,19 @@ std::string find_library_path(const std::string & library_name)
 {
   std::string search_path = get_env_var(kPathVar);
   std::list<std::string> search_paths = split(search_path, kPathSeparator);
+
+  #ifdef _WIN32
+  // Support current directory to enable containerized deployments, like Hololens.
+  DWORD len = GetCurrentDirectoryA(0, NULL) + 1;  // How much space is needed for current path?
+  char* currentDir = new char[len];
+  if (currentDir) {
+    if (GetCurrentDirectoryA(len, currentDir) > 0) {
+      search_paths.push_front(currentDir);
+    }
+
+    delete [] currentDir; // no longer needed.
+  }
+  #endif
 
   std::string filename = kSolibPrefix;
   filename += library_name + kSolibExtension;
