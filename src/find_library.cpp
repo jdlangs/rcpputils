@@ -29,6 +29,10 @@
 #include "rcpputils/split.hpp"
 #include "rcpputils/get_env.hpp"
 
+#ifdef _WIN32
+#include <windows.h>
+#endif
+
 namespace rcpputils
 {
 
@@ -36,7 +40,6 @@ namespace
 {
 
 #ifdef _WIN32
-#include <windows.h>
 static constexpr char kPathVar[] = "PATH";
 static constexpr char kPathSeparator = ';';
 static constexpr char kSolibPrefix[] = "";
