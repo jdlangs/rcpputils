@@ -26,6 +26,10 @@
 #include "rcutils/filesystem.h"
 #include "rcutils/get_env.h"
 
+#ifdef _WIN32
+#include <windows.h>
+#endif
+
 namespace rcpputils
 {
 
@@ -33,7 +37,6 @@ namespace
 {
 
 #ifdef _WIN32
-#include <windows.h>
 static constexpr char kPathVar[] = "PATH";
 static constexpr char kPathSeparator = ';';
 static constexpr char kSolibPrefix[] = "";
