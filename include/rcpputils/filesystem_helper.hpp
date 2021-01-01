@@ -32,54 +32,25 @@
 /*! \file filesystem_helper.hpp
  * \brief Cross-platform filesystem helper functions and additional emulation of [std::filesystem](https://en.cppreference.com/w/cpp/filesystem).
  *
- * Note: Once std::filesystem is supported on all ROS2 platforms, this class
- * can be deprecated/removed in favor of the built-in functionality.
+ * Note: The functionality here is implemented as a thin wrapper around a 3rd-party header library
+ * to provide equivalent std::filesystem functionality (see 'ghc/filesystem.hpp' in this directory).
+ * Once std::filesystem is supported on all ROS2 platforms, this class can be deprecated/removed in
+ * favor of the built-in functionality.
  */
 
 #ifndef RCPPUTILS__FILESYSTEM_HELPER_HPP_
 #define RCPPUTILS__FILESYSTEM_HELPER_HPP_
 
-#include <limits.h>
-#include <sys/stat.h>
+// ghc::filesystem::path defaults to using UTF-8 encoded strings on all platforms; this define
+// enables std::wstring usage on Windows, which is what std::filesystem does.
+#define GHC_WIN_WSTRING_STRING_TYPE
 
-#include <algorithm>
-#include <cstring>
-#include <string>
-#include <vector>
-
-/**
- * \def RCPPUTILS_IMPL_OS_DIRSEP
- *
- * A definition for this platforms string path separator
- */
-
-#ifdef _WIN32
-#  define RCPPUTILS_IMPL_OS_DIRSEP '\\'
-#else
-#  define RCPPUTILS_IMPL_OS_DIRSEP '/'
-#endif
-
-#ifdef _WIN32
-#  include <windows.h>
-#  include <direct.h>
-#  include <fileapi.h>
-#  include <io.h>
-#  define access _access_s
-#else
-#  include <dirent.h>
-#  include <sys/types.h>
-#  include <unistd.h>
-#endif
-
-#include "rcpputils/split.hpp"
-#include "rcutils/get_env.h"
+#include <rcpputils/ghc/filesystem.hpp>
 
 namespace rcpputils
 {
 namespace fs
 {
-
-static constexpr const char kPreferredSeparator = RCPPUTILS_IMPL_OS_DIRSEP;
 
 /**
  * \brief Drop-in replacement for [std::filesystem::path](https://en.cppreference.com/w/cpp/filesystem/path).
@@ -87,309 +58,7 @@ static constexpr const char kPreferredSeparator = RCPPUTILS_IMPL_OS_DIRSEP;
  * It must conform to the same standard described and cannot include methods that are not
  * incorporated there.
  */
-class path
-{
-public:
-  /**
-    * \brief Constructs an empty path.
-    */
-  path()
-  : path("")
-  {}
-
-  /**
-   * \brief Conversion constructor from a std::string path.
-   *
-   * \param p A string path split by the platform's string path separator.
-   */
-  path(const std::string & p)  // NOLINT(runtime/explicit): this is a conversion constructor
-  : path_(p)
-  {
-    std::replace(path_.begin(), path_.end(), '\\', kPreferredSeparator);
-    std::replace(path_.begin(), path_.end(), '/', kPreferredSeparator);
-    path_as_vector_ = split(path_, kPreferredSeparator);
-  }
-
-  /**
-    * \brief Copy constructor.
-    */
-  path(const path & p) = default;
-
-  /**
-   * \brief Get the path delimited using this system's path separator.
-   *
-   * \return The path as a string
-   */
-  std::string string() const
-  {
-    return path_;
-  }
-
-  /**
-   * \brief Check if this path exists.
-   *
-   * \return True if the path exists, false otherwise.
-   */
-  bool exists() const
-  {
-    return access(path_.c_str(), 0) == 0;
-  }
-
-  /**
-   * \brief Check if the path exists and it is a directory.
-   *
-   * \return True if the path is an existing directory, false otherwise.
-   */
-  bool is_directory() const noexcept
-  {
-    struct stat stat_buffer;
-    const auto rc = stat(path_.c_str(), &stat_buffer);
-
-    if (rc != 0) {
-      return false;
-    }
-
-#ifdef _WIN32
-    return (stat_buffer.st_mode & S_IFDIR) == S_IFDIR;
-#else
-    return S_ISDIR(stat_buffer.st_mode);
-#endif
-  }
-
-  /**
-   * \brief Check if the path is a regular file.
-   *
-   * \return True if the file is an existing regular file, false otherwise.
-   */
-  bool is_regular_file() const noexcept
-  {
-    struct stat stat_buffer;
-    const auto rc = stat(path_.c_str(), &stat_buffer);
-
-    if (rc != 0) {
-      return false;
-    }
-
-#ifdef _WIN32
-    return (stat_buffer.st_mode & S_IFREG) == S_IFREG;
-#else
-    return S_ISREG(stat_buffer.st_mode);
-#endif
-  }
-
-  /**
-  * \brief Return the size of the file in bytes.
-  *
-  * \return size of file in bytes
-  * \throws std::system_error
-  */
-  uint64_t file_size() const
-  {
-    if (is_directory()) {
-      auto ec = std::make_error_code(std::errc::is_a_directory);
-      throw std::system_error{ec, "cannot get file size"};
-    }
-
-    struct stat stat_buffer;
-    const auto rc = stat(path_.c_str(), &stat_buffer);
-
-    if (rc != 0) {
-      std::error_code ec{errno, std::system_category()};
-      errno = 0;
-      throw std::system_error{ec, "cannot get file size"};
-    } else {
-      return static_cast<uint64_t>(stat_buffer.st_size);
-    }
-  }
-
-  /**
-  * \brief Check if the path is empty.
-  *
-  * \return True if the path is empty, false otherwise.
-  */
-  bool empty() const
-  {
-    return path_.empty();
-  }
-
-  /**
-  * \brief Check if the path is an absolute path.
-  *
-  * \return True if the path is absolute, false otherwise.
-  */
-  bool is_absolute() const
-  {
-    return path_.size() > 0 &&
-           (path_[0] == kPreferredSeparator ||
-           this->is_absolute_with_drive_letter());
-  }
-
-  /**
-  * \brief Const iterator to first element of this path.
-  *
-  * \return A const iterator to the first element.
-  */
-  std::vector<std::string>::const_iterator cbegin() const
-  {
-    return path_as_vector_.cbegin();
-  }
-
-  /**
-  * Const iterator to one past the last element of this path.
-  *
-  * return A const iterator to one past the last element of the path.
-  */
-  std::vector<std::string>::const_iterator cend() const
-  {
-    return path_as_vector_.cend();
-  }
-
-  /**
-  * \brief Get the parent directory of this path.
-  *
-  * \return A path to the parent directory.
-  */
-  path parent_path() const
-  {
-    // Edge case: empty path
-    if (this->empty()) {
-      return path("");
-    }
-
-    // Edge case: if path only consists of one part, then return '.' or '/'
-    //            depending if the path is absolute or not
-    if (1u == path_as_vector_.size()) {
-      if (this->is_absolute()) {
-        // Windows is tricky, since an absolute path may start with 'C:\\' or '\\'
-        if (this->is_absolute_with_drive_letter()) {
-          return path(path_as_vector_[0] + kPreferredSeparator);
-        }
-        return path(std::string(1, kPreferredSeparator));
-      }
-      return path(".");
-    }
-
-    // Edge case: with a path 'C:\\foo' we want to return 'C:\\' not 'C:'
-    // Don't drop the root directory from an absolute path on Windows starting with a letter drive
-    if (2u == path_as_vector_.size() && this->is_absolute_with_drive_letter()) {
-      return path(path_as_vector_[0] + kPreferredSeparator);
-    }
-
-    path parent;
-    for (auto it = this->cbegin(); it != --this->cend(); ++it) {
-      if (parent.empty() && (!this->is_absolute() || this->is_absolute_with_drive_letter())) {
-        // This handles the case where we are dealing with a relative path or
-        // the Windows drive letter; in both cases we don't want a separator at
-        // the beginning, so just copy the piece directly.
-        parent = *it;
-      } else {
-        parent /= *it;
-      }
-    }
-    return parent;
-  }
-
-  /**
-  * \brief Get the last element in this path.
-  *
-  * If this path points to a directory, it will return the directory name.
-  *
-  * \return The last element in this path
-  */
-  path filename() const
-  {
-    return path_.empty() ? path() : *--this->cend();
-  }
-
-  /**
-  * \brief Get a relative path to the component including and following the last '.'.
-  *
-  * \return The string extension
-  */
-  path extension() const
-  {
-    const char * delimiter = ".";
-    auto split_fname = split(this->string(), *delimiter);
-    return split_fname.size() == 1 ? path("") : path("." + split_fname.back());
-  }
-
-  /**
-  * \brief Concatenate a path and a string into a single path.
-  *
-  * \param other the string compnoent to concatenate
-  * \return The combined path of this and other.
-  */
-  path operator/(const std::string & other)
-  {
-    return this->operator/(path(other));
-  }
-
-  /**
-  * \brief Append a string component to this path.
-  *
-  * \param other the string component to append
-  * \return *this
-  */
-  path & operator/=(const std::string & other)
-  {
-    this->operator/=(path(other));
-    return *this;
-  }
-
-  /**
-  * \brief Concatenate two paths together.
-  *
-  * \param other the path to append
-  * \return The combined path.
-  */
-  path operator/(const path & other)
-  {
-    return path(*this).operator/=(other);
-  }
-
-  /**
-  * \brief Append a string component to this path.
-  *
-  * \param other the string component to append
-  * \return *this
-  */
-  path & operator/=(const path & other)
-  {
-    if (other.is_absolute()) {
-      this->path_ = other.path_;
-      this->path_as_vector_ = other.path_as_vector_;
-    } else {
-      if (this->path_.empty() || this->path_[this->path_.length() - 1] != kPreferredSeparator) {
-        // This ensures that we don't put duplicate separators into the path;
-        // this can happen, for instance, on absolute paths where the first
-        // item in the vector is the empty string.
-        this->path_ += kPreferredSeparator;
-      }
-      this->path_ += other.string();
-      this->path_as_vector_.insert(
-        std::end(this->path_as_vector_),
-        std::begin(other.path_as_vector_), std::end(other.path_as_vector_));
-    }
-    return *this;
-  }
-
-private:
-  /// Returns true if the path is an absolute path with a drive letter on Windows
-  bool is_absolute_with_drive_letter() const
-  {
-#ifdef _WIN32
-    if (path_.empty()) {
-      return false;
-    }
-    return 0 == path_.compare(1, 2, ":\\");
-#else
-    return false;  // only Windows contains absolute paths starting with drive letters
-#endif
-  }
-
-  std::string path_;
-  std::vector<std::string> path_as_vector_;
-};
+using path = ghc::filesystem::path;
 
 /**
  * \brief Check if the path is a regular file.
@@ -399,7 +68,7 @@ private:
  */
 inline bool is_regular_file(const path & p) noexcept
 {
-  return p.is_regular_file();
+  return ghc::filesystem::is_regular_file(p);
 }
 
 /**
@@ -410,7 +79,7 @@ inline bool is_regular_file(const path & p) noexcept
  */
 inline bool is_directory(const path & p) noexcept
 {
-  return p.is_directory();
+  return ghc::filesystem::is_directory(p);
 }
 
 /**
@@ -423,7 +92,7 @@ inline bool is_directory(const path & p) noexcept
  */
 inline uint64_t file_size(const path & p)
 {
-  return p.file_size();
+  return ghc::filesystem::file_size(p);
 }
 
 /**
@@ -434,7 +103,7 @@ inline uint64_t file_size(const path & p)
  */
 inline bool exists(const path & path_to_check)
 {
-  return path_to_check.exists();
+  return ghc::filesystem::exists(path_to_check);
 }
 
 
@@ -445,25 +114,7 @@ inline bool exists(const path & path_to_check)
  */
 inline path temp_directory_path()
 {
-#ifdef _WIN32
-#ifdef UNICODE
-#error "rcpputils::fs does not support Unicode paths"
-#endif
-  TCHAR temp_path[MAX_PATH];
-  DWORD size = GetTempPathA(MAX_PATH, temp_path);
-  if (size > MAX_PATH || size == 0) {
-    std::error_code ec(static_cast<int>(GetLastError()), std::system_category());
-    throw std::system_error(ec, "cannot get temporary directory path");
-  }
-  temp_path[size] = '\0';
-#else
-  const char * temp_path = NULL;
-  const char * ret_str = rcutils_get_env("TMPDIR", &temp_path);
-  if (NULL != ret_str || *temp_path == '\0') {
-    temp_path = "/tmp";
-  }
-#endif
-  return path(temp_path);
+  return ghc::filesystem::temp_directory_path();
 }
 
 /**
@@ -475,22 +126,7 @@ inline path temp_directory_path()
  */
 inline path current_path()
 {
-#ifdef _WIN32
-#ifdef UNICODE
-#error "rcpputils::fs does not support Unicode paths"
-#endif
-  char cwd[MAX_PATH];
-  if (nullptr == _getcwd(cwd, MAX_PATH)) {
-#else
-  char cwd[PATH_MAX];
-  if (nullptr == getcwd(cwd, PATH_MAX)) {
-#endif
-    std::error_code ec{errno, std::system_category()};
-    errno = 0;
-    throw std::system_error{ec, "cannot get current working directory"};
-  }
-
-  return path(cwd);
+  return ghc::filesystem::current_path();
 }
 
 /**
@@ -501,24 +137,7 @@ inline path current_path()
  */
 inline bool create_directories(const path & p)
 {
-  path p_built;
-  int status = 0;
-
-  for (auto it = p.cbegin(); it != p.cend() && status == 0; ++it) {
-    if (!p_built.empty() || it->empty()) {
-      p_built /= *it;
-    } else {
-      p_built = *it;
-    }
-    if (!p_built.exists()) {
-#ifdef _WIN32
-      status = _mkdir(p_built.string().c_str());
-#else
-      status = mkdir(p_built.string().c_str(), S_IRWXU | S_IRWXG | S_IRWXO);
-#endif
-    }
-  }
-  return status == 0 && p_built.is_directory();
+  return ghc::filesystem::create_directories(p);
 }
 
 /**
@@ -529,20 +148,7 @@ inline bool create_directories(const path & p)
  */
 inline bool remove(const path & p)
 {
-#ifdef _WIN32
-  struct _stat s;
-  if (_stat(p.string().c_str(), &s) == 0) {
-    if (s.st_mode & S_IFDIR) {
-      return _rmdir(p.string().c_str()) == 0;
-    }
-    if (s.st_mode & S_IFREG) {
-      return ::remove(p.string().c_str()) == 0;
-    }
-  }
-  return false;
-#else
-  return ::remove(p.string().c_str()) == 0;
-#endif
+  return ghc::filesystem::remove(p);
 }
 
 /**
@@ -555,51 +161,7 @@ inline bool remove(const path & p)
  */
 inline bool remove_all(const path & p)
 {
-  if (!is_directory(p)) {return remove(p);}
-
-#ifdef _WIN32
-  // We need a string of type PCZZTSTR, which is a double null terminated char ptr
-  size_t length = p.string().size();
-  TCHAR * temp_dir = new TCHAR[length + 2];
-  memcpy(temp_dir, p.string().c_str(), length);
-  temp_dir[length] = '\0';
-  temp_dir[length + 1] = '\0';  // double null terminated
-
-  SHFILEOPSTRUCT file_options;
-  file_options.hwnd = nullptr;
-  file_options.wFunc = FO_DELETE;  // delete (recursively)
-  file_options.pFrom = temp_dir;
-  file_options.pTo = nullptr;
-  file_options.fFlags = FOF_NOCONFIRMATION | FOF_SILENT;  // do not prompt user
-  file_options.fAnyOperationsAborted = FALSE;
-  file_options.lpszProgressTitle = nullptr;
-  file_options.hNameMappings = nullptr;
-
-  auto ret = SHFileOperation(&file_options);
-  delete[] temp_dir;
-
-  return 0 == ret && false == file_options.fAnyOperationsAborted;
-#else
-  DIR * dir = opendir(p.string().c_str());
-  struct dirent * directory_entry;
-  while ((directory_entry = readdir(dir)) != nullptr) {
-    // Make sure to not call ".." or "." entries in directory (might delete everything)
-    if (strcmp(directory_entry->d_name, ".") != 0 && strcmp(directory_entry->d_name, "..") != 0) {
-      auto sub_path = rcpputils::fs::path(p) / directory_entry->d_name;
-      // if directory, call recursively
-      if (sub_path.is_directory() && !remove_all(sub_path)) {
-        return false;
-        // if not, call regular remove
-      } else if (!remove(sub_path)) {
-        return false;
-      }
-    }
-  }
-  closedir(dir);
-  // directory is empty now, call remove
-  remove(p);
-  return !rcpputils::fs::exists(p);
-#endif
+  return ghc::filesystem::remove_all(p);
 }
 
 /**
@@ -624,8 +186,6 @@ inline path remove_extension(const path & file_path, int n_times = 1)
   }
   return new_path;
 }
-
-#undef RCPPUTILS_IMPL_OS_DIRSEP
 
 }  // namespace fs
 }  // namespace rcpputils

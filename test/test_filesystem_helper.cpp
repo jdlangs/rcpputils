@@ -238,23 +238,23 @@ TEST(TestFilesystemHelper, exists)
 {
   {
     auto p = path("");
-    EXPECT_FALSE(p.exists());
+    EXPECT_FALSE(exists(p));
   }
   {
     auto p = path(".");
-    EXPECT_TRUE(p.exists());
+    EXPECT_TRUE(exists(p));
   }
   {
     auto p = path("..");
-    EXPECT_TRUE(p.exists());
+    EXPECT_TRUE(exists(p));
   }
   {
     if (is_win32) {
       auto p = path("\\");
-      EXPECT_TRUE(p.exists());
+      EXPECT_TRUE(exists(p));
     } else {
       auto p = path("/");
-      EXPECT_TRUE(p.exists());
+      EXPECT_TRUE(exists(p));
     }
   }
 }
