@@ -41,11 +41,7 @@
 #ifndef RCPPUTILS__FILESYSTEM_HELPER_HPP_
 #define RCPPUTILS__FILESYSTEM_HELPER_HPP_
 
-// ghc::filesystem::path defaults to using UTF-8 encoded strings on all platforms; this define
-// enables std::wstring usage on Windows, which is what std::filesystem does.
-#define GHC_WIN_WSTRING_STRING_TYPE
-
-#include <rcpputils/ghc/filesystem.hpp>
+#include <filesystem>
 
 namespace rcpputils
 {
@@ -58,7 +54,7 @@ namespace fs
  * It must conform to the same standard described and cannot include methods that are not
  * incorporated there.
  */
-using path = ghc::filesystem::path;
+using path = std::filesystem::path;
 
 /**
  * \brief Check if the path is a regular file.
@@ -68,7 +64,7 @@ using path = ghc::filesystem::path;
  */
 inline bool is_regular_file(const path & p) noexcept
 {
-  return ghc::filesystem::is_regular_file(p);
+  return std::filesystem::is_regular_file(p);
 }
 
 /**
@@ -79,7 +75,7 @@ inline bool is_regular_file(const path & p) noexcept
  */
 inline bool is_directory(const path & p) noexcept
 {
-  return ghc::filesystem::is_directory(p);
+  return std::filesystem::is_directory(p);
 }
 
 /**
@@ -92,7 +88,7 @@ inline bool is_directory(const path & p) noexcept
  */
 inline uint64_t file_size(const path & p)
 {
-  return ghc::filesystem::file_size(p);
+  return std::filesystem::file_size(p);
 }
 
 /**
@@ -103,7 +99,7 @@ inline uint64_t file_size(const path & p)
  */
 inline bool exists(const path & path_to_check)
 {
-  return ghc::filesystem::exists(path_to_check);
+  return std::filesystem::exists(path_to_check);
 }
 
 
@@ -114,7 +110,7 @@ inline bool exists(const path & path_to_check)
  */
 inline path temp_directory_path()
 {
-  return ghc::filesystem::temp_directory_path();
+  return std::filesystem::temp_directory_path();
 }
 
 /**
@@ -126,7 +122,7 @@ inline path temp_directory_path()
  */
 inline path current_path()
 {
-  return ghc::filesystem::current_path();
+  return std::filesystem::current_path();
 }
 
 /**
@@ -137,7 +133,7 @@ inline path current_path()
  */
 inline bool create_directories(const path & p)
 {
-  return ghc::filesystem::create_directories(p);
+  return std::filesystem::create_directories(p);
 }
 
 /**
@@ -148,7 +144,7 @@ inline bool create_directories(const path & p)
  */
 inline bool remove(const path & p)
 {
-  return ghc::filesystem::remove(p);
+  return std::filesystem::remove(p);
 }
 
 /**
@@ -161,7 +157,7 @@ inline bool remove(const path & p)
  */
 inline bool remove_all(const path & p)
 {
-  return ghc::filesystem::remove_all(p);
+  return std::filesystem::remove_all(p);
 }
 
 /**
