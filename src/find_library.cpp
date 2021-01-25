@@ -80,9 +80,9 @@ std::string find_library_path(const std::string & library_name)
   filename += library_name + kSolibExtension;
 
   for (const auto & search_path : search_paths) {
-    std::string path = search_path + "/" + filename;
-    if (rcutils_is_file(path.c_str())) {
-      return path;
+    auto path = std::filesystem::path(search_path) / filename;
+    if (rcutils_is_file(path.string().c_str())) {
+      return path.string();
     }
   }
   return "";
