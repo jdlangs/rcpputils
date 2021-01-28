@@ -82,7 +82,13 @@ std::string find_library_path(const std::string & library_name)
   for (const auto & search_path : search_paths) {
     auto path = std::filesystem::path(search_path) / filename;
     if (rcutils_is_file(path.string().c_str())) {
-      return path.string();
+      // On Windows UWP, dynamic library loading only seems to work if given
+      // just the library name and not the full path
+      #ifdef WINAPI_FAMILY_APP
+        return library_name;
+      #else
+        return path.string();
+      #endif
     }
   }
   return "";
