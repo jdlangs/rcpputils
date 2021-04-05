@@ -125,33 +125,6 @@ inline path current_path()
 }
 
 /**
- * \brief Return current working directory.
- *
- * \return The current working directory.
- *
- * \throws std::system_error
- */
-inline path current_path()
-{
-#ifdef _WIN32
-#ifdef UNICODE
-#error "rcpputils::fs does not support Unicode paths"
-#endif
-  char cwd[MAX_PATH];
-  if (nullptr == _getcwd(cwd, MAX_PATH)) {
-#else
-  char cwd[PATH_MAX];
-  if (nullptr == getcwd(cwd, PATH_MAX)) {
-#endif
-    std::error_code ec{errno, std::system_category()};
-    errno = 0;
-    throw std::system_error{ec, "cannot get current working directory"};
-  }
-
-  return path(cwd);
-}
-
-/**
  * \brief Create a directory with the given path p.
  *
  * This builds directories recursively and will skip directories if they are already created.
@@ -184,63 +157,6 @@ inline bool remove(const path & p)
 inline bool remove_all(const path & p)
 {
   return std::filesystem::remove_all(p);
-}
-
-/**
- * \brief Remove the directory at the path p and its content.
- *
- * Additionally to \sa remove, remove_all removes a directory and its containing files.
- *
- * \param The path of the directory to remove.
- * \return true if the directory exists and it was successfully removed, false otherwise.
- */
-inline bool remove_all(const path & p)
-{
-  if (!is_directory(p)) {return remove(p);}
-
-#ifdef _WIN32
-  // We need a string of type PCZZTSTR, which is a double null terminated char ptr
-  size_t length = p.string().size();
-  TCHAR * temp_dir = new TCHAR[length + 2];
-  memcpy(temp_dir, p.string().c_str(), length);
-  temp_dir[length] = '\0';
-  temp_dir[length + 1] = '\0';  // double null terminated
-
-  SHFILEOPSTRUCT file_options;
-  file_options.hwnd = nullptr;
-  file_options.wFunc = FO_DELETE;  // delete (recursively)
-  file_options.pFrom = temp_dir;
-  file_options.pTo = nullptr;
-  file_options.fFlags = FOF_NOCONFIRMATION | FOF_SILENT;  // do not prompt user
-  file_options.fAnyOperationsAborted = FALSE;
-  file_options.lpszProgressTitle = nullptr;
-  file_options.hNameMappings = nullptr;
-
-  auto ret = SHFileOperation(&file_options);
-  delete[] temp_dir;
-
-  return 0 == ret && false == file_options.fAnyOperationsAborted;
-#else
-  DIR * dir = opendir(p.string().c_str());
-  struct dirent * directory_entry;
-  while ((directory_entry = readdir(dir)) != nullptr) {
-    // Make sure to not call ".." or "." entries in directory (might delete everything)
-    if (strcmp(directory_entry->d_name, ".") != 0 && strcmp(directory_entry->d_name, "..") != 0) {
-      auto sub_path = rcpputils::fs::path(p) / directory_entry->d_name;
-      // if directory, call recursively
-      if (sub_path.is_directory() && !remove_all(sub_path)) {
-        return false;
-        // if not, call regular remove
-      } else if (!remove(sub_path)) {
-        return false;
-      }
-    }
-  }
-  closedir(dir);
-  // directory is empty now, call remove
-  remove(p);
-  return !rcpputils::fs::exists(p);
-#endif
 }
 
 /**
